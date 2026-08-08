@@ -1,0 +1,389 @@
+# PrintBridge
+
+> Silent local printing agent for web applications — print PDFs and thermal labels from any web app to any local printer.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)](#)
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+
+PrintBridge is a lightweight local agent that runs in your system tray. Any web application can send print jobs via HTTP to `localhost`, and PrintBridge prints them silently — no dialog boxes, no user interaction required.
+
+## Features
+
+- **Silent PDF printing** — print PDFs to any system printer without dialogs
+- **TSPL label printing** — native TSPL commands for thermal printers (TSC, Xprinter, Zebra, etc.)
+- **QR codes** — generate QR codes directly in TSPL labels
+- **Unicode support** — automatic bitmap rendering for non-ASCII text (Arabic, Chinese, etc.)
+- **System tray icon** — runs in the background with a minimal UI
+- **Auto-start** — launches on system startup (macOS LaunchAgent / Windows registry)
+- **Cross-platform** — works on macOS, Windows, and Linux
+- **Configurable** — customize port, CORS origins, label defaults, and branding via `config.json`
+- **Raw TSPL mode** — send arbitrary TSPL commands for full control
+
+## Quick Start
+
+### Install from source
+
+```bash
+git clone https://github.com/your-username/printbridge.git
+cd printbridge
+pip install -r requirements.txt
+python agent.py
+```
+
+The agent starts on `http://127.0.0.1:9120` and runs in your system tray.
+
+### Verify it's running
+
+```bash
+curl http://127.0.0.1:9120/api/status
+# {"port":9120,"platform":"Darwin","status":"ok","tspl":true,"version":"1.0.0"}
+```
+
+### Download pre-built binaries
+
+Pre-built binaries are available on the [Releases](../../releases) page:
+
+- **Windows**: `PrintBridge-Setup.exe` (installer) or `PrintBridge.exe` (standalone)
+- **macOS**: `PrintBridge-Installer.dmg`
+
+No Python installation required for pre-built binaries.
+
+## API Reference
+
+All endpoints accept and return JSON. The agent listens on `127.0.0.1` only (no external access).
+
+### `GET /api/status`
+
+Health check — use this to detect if the agent is running.
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "version": "1.0.0",
+  "platform": "Darwin",
+  "port": 9120,
+  "tspl": true
+}
+```
+
+### `GET /api/printers`
+
+List available system printers.
+
+**Response:**
+```json
+{
+  "printers": ["HP LaserJet", "Xprinter XP-350"],
+  "default": "HP LaserJet"
+}
+```
+
+### `POST /api/print`
+
+Print a PDF document silently.
+
+**Request:**
+```json
+{
+  "pdf": "<base64-encoded PDF bytes>",
+  "printer": "HP LaserJet",
+  "copies": 1,
+  "mediaWidth": 100,
+  "mediaHeight": 50
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `pdf` | string | Yes | Base64-encoded PDF data |
+| `printer` | string | No | Printer name (default: system default) |
+| `copies` | int | No | Number of copies (1-99, default: 1) |
+| `mediaWidth` | number | No | Label width in mm (for thermal printers) |
+| `mediaHeight` | number | No | Label height in mm (for thermal printers) |
+
+### `POST /api/print-labels`
+
+Print product labels using TSPL commands (thermal printers).
+
+**Request:**
+```json
+{
+  "labels": [
+    {
+      "productName": "Widget A",
+      "formuleName": "Standard",
+      "width": 100,
+      "height": 50,
+      "position": "Shelf 3",
+      "quantity": 2,
+      "orderRef": "#1234",
+      "clientName": "John Smith",
+      "measurementId": "M001",
+      "sig": "abc123"
+    }
+  ],
+  "printer": "Xprinter XP-350",
+  "labelWidth": 100,
+  "labelHeight": 60,
+  "shopName": "My Shop",
+  "workOrderId": 42,
+  "qrBaseUrl": "https://example.com/label/",
+  "copies": 1,
+  "displayOptions": {
+    "showBarcode": false,
+    "showFormule": true,
+    "showClient": true,
+    "showOrder": true,
+    "showQr": true,
+    "showPosition": true,
+    "showShopHeader": true,
+    "fontScale": 2
+  }
+}
+```
+
+### `POST /api/print-cut-labels`
+
+Print compact cut/manufacturing labels using TSPL.
+
+**Request:**
+```json
+{
+  "labels": [
+    {
+      "position": "Room 1",
+      "barInfo": "Bar 1 — Cut 3",
+      "profileName": "H",
+      "profileRef": "2RF21",
+      "cutName": "H",
+      "finishing": "RAL 7024",
+      "length": 1200,
+      "angles": "45/45",
+      "binNumber": 3,
+      "source": "production"
+    }
+  ],
+  "printer": "Xprinter XP-350",
+  "labelWidth": 45,
+  "labelHeight": 35,
+  "orderRef": "1245",
+  "copies": 1
+}
+```
+
+### `POST /api/print-tspl`
+
+Send raw TSPL commands directly to a printer. Full control for custom label formats.
+
+**Request:**
+```json
+{
+  "tspl": "SIZE 100 mm, 60 mm\r\nGAP 2 mm, 0 mm\r\nDIRECTION 0\r\nCLS\r\nTEXT 10,10,\"4\",0,1,1,\"Hello World\"\r\nQRCODE 400,10,M,6,A,0,\"https://example.com\"\r\nPRINT 1,1\r\n",
+  "printer": "Xprinter XP-350"
+}
+```
+
+You can also pass TSPL as an array of command strings:
+
+```json
+{
+  "tspl": [
+    "SIZE 100 mm, 60 mm",
+    "GAP 2 mm, 0 mm",
+    "DIRECTION 0",
+    "CLS",
+    "TEXT 10,10,\"4\",0,1,1,\"Hello World\"",
+    "PRINT 1,1"
+  ],
+  "printer": null
+}
+```
+
+### `POST /api/test-tspl`
+
+Send a simple test label to verify printer connectivity.
+
+**Request:**
+```json
+{
+  "printer": "Xprinter XP-350",
+  "labelWidth": 100,
+  "labelHeight": 150
+}
+```
+
+## Configuration
+
+Edit `config.json` in the same directory as `agent.py`:
+
+```json
+{
+  "port": 9120,
+  "cors_origins": [
+    "http://localhost:*",
+    "http://127.0.0.1:*",
+    "https://your-app.com"
+  ],
+  "log_dir": "~/.printbridge",
+  "label_defaults": {
+    "width_mm": 100,
+    "height_mm": 150,
+    "dpmm": 8,
+    "gap_mm": 2
+  },
+  "footer_text": "PrintBridge",
+  "tray_name": "PrintBridge"
+}
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PRINTBRIDGE_PORT` | `9120` | Override the port |
+| `PRINTBRIDGE_FOOTER` | `PrintBridge` | Override footer text on labels |
+| `PRINTBRIDGE_TRAY_NAME` | `PrintBridge` | Override tray icon name |
+
+### CORS
+
+By default, PrintBridge only accepts requests from `localhost`. To allow your web app to connect, add your domain to `cors_origins` in `config.json`:
+
+```json
+{
+  "cors_origins": [
+    "http://localhost:*",
+    "https://my-app.example.com",
+    "https://*.my-app.example.com"
+  ]
+}
+```
+
+## Building from Source
+
+### Prerequisites
+
+- Python 3.10+
+- `pip install -r requirements.txt`
+
+### Windows
+
+```cmd
+build_windows.bat
+```
+
+Produces:
+- `dist\PrintBridge.exe` — standalone executable
+- `PrintBridge-Setup.exe` — NSIS installer (if NSIS is installed)
+
+### macOS
+
+```bash
+./build_macos.sh
+```
+
+Produces:
+- `dist/PrintBridge.app` — macOS app bundle
+- `dist/PrintBridge-Installer.dmg` — DMG installer (if `create-dmg` is installed)
+
+## How It Works
+
+```
+┌──────────────┐     HTTP/JSON      ┌───────────────┐     OS print      ┌────────────┐
+│  Your Web App │ ──────────────────▶│  PrintBridge   │ ────────────────▶│  Printer    │
+│  (any domain) │  localhost:9120   │  (system tray) │  lp / win32print  │  (any type) │
+└──────────────┘                    └───────────────┘                   └────────────┘
+```
+
+1. Your web app sends a POST request to `http://127.0.0.1:9120/api/print` (or `/api/print-labels`, `/api/print-tspl`)
+2. PrintBridge decodes the data and sends it to the specified printer
+3. The document prints silently — no dialog, no user interaction
+
+### PDF Printing
+
+- **macOS/Linux**: Uses `lp` command with optional media size for thermal printers
+- **Windows**: Uses SumatraPDF (if installed), falls back to PowerShell `Start-Process`, then `ShellExecute`
+
+### TSPL Label Printing
+
+- **macOS/Linux**: Uses `lpr -o raw` to send raw bytes
+- **Windows**: Uses `win32print.WritePrinter` with `RAW` data type
+
+## Integrating with Your Web App
+
+### JavaScript Example
+
+```javascript
+// Check if PrintBridge is running
+async function checkAgent() {
+  try {
+    const res = await fetch('http://127.0.0.1:9120/api/status');
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+// Print a PDF
+async function printPdf(pdfBase64, printerName) {
+  const res = await fetch('http://127.0.0.1:9120/api/print', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      pdf: pdfBase64,
+      printer: printerName,
+      copies: 1,
+    }),
+  });
+  return res.json();
+}
+
+// Print a custom TSPL label
+async function printLabel(tsplCommands, printerName) {
+  const res = await fetch('http://127.0.0.1:9120/api/print-tspl', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      tspl: tsplCommands,
+      printer: printerName,
+    }),
+  });
+  return res.json();
+}
+```
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| Agent won't start | Check logs: `~/.printbridge/agent.log` |
+| Printer not detected | Ensure printer is installed in OS settings |
+| Label is blank | Verify label dimensions match your media |
+| Port 9120 in use | Change port in `config.json` or set `PRINTBRIDGE_PORT` env var |
+| CORS error | Add your domain to `cors_origins` in `config.json` |
+| PDF won't print on Windows | Install [SumatraPDF](https://www.sumatrapdfreader.org/) for reliable silent printing |
+| Arabic text not rendering | Install `arabic-reshaper` and `python-bidi` (included in requirements.txt) |
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+Areas we'd love help with:
+- New printer protocols (ZPL, EPL, CPCL)
+- Label template system (JSON-based or visual editor)
+- Web UI for configuration
+- Linux packaging (deb, rpm, AppImage)
+- Unit and integration tests
+
+## License
+
+This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.
+
+## Acknowledgments
+
+- [Flask](https://flask.palletsprojects.com/) — web framework
+- [pystray](https://github.com/moses-palmer/pystray) — system tray icon
+- [Pillow](https://python-pillow.org/) — image processing for bitmap text rendering
+- [pywin32](https://github.com/mhammond/pywin32) — Windows printer access
+- [SumatraPDF](https://www.sumatrapdfreader.org/) — silent PDF printing on Windows

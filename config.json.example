@@ -1,0 +1,16 @@
+{
+  "port": 9120,
+  "cors_origins": [
+    "http://localhost:*",
+    "http://127.0.0.1:*"
+  ],
+  "log_dir": "~/.printbridge",
+  "label_defaults": {
+    "width_mm": 100,
+    "height_mm": 150,
+    "dpmm": 8,
+    "gap_mm": 2
+  },
+  "footer_text": "PrintBridge",
+  "tray_name": "PrintBridge"
+}

@@ -1,0 +1,46 @@
+# Build output
+build/
+dist/
+*.spec
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Binaries (should not be committed)
+*.exe
+*.dmg
+*.msi
+*.deb
+*.rpm
+
+# Debug / temp files
+debug_*.tspl
+debug_*.bin
+debug_*.txt
+*.log
+*.lock
+
+# Config overrides (keep config.json as default template)
+config.local.json
+
+# User-specific config (copy from config.json.example)
+config.json
