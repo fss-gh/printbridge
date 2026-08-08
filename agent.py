@@ -54,15 +54,19 @@ DEFAULT_CONFIG = {
 }
 
 def load_config():
-    """Load configuration from config.json, falling back to defaults."""
+    """Load configuration from config.json, falling back to config.json.example,
+    then to built-in defaults."""
     cfg = dict(DEFAULT_CONFIG)
-    if CONFIG_PATH.exists():
-        try:
-            with open(CONFIG_PATH, 'r') as f:
-                user_cfg = json.load(f)
-            cfg.update(user_cfg)
-        except Exception as e:
-            print(f'Warning: could not parse config.json: {e}')
+    for path in [CONFIG_PATH, CONFIG_PATH.parent / 'config.json.example']:
+        if path.exists():
+            try:
+                with open(path, 'r') as f:
+                    user_cfg = json.load(f)
+                cfg.update(user_cfg)
+                break
+            except Exception as e:
+                print(f'Warning: could not parse {path.name}: {e}')
+                break
     # Allow env var overrides
     if os.environ.get('PRINTBRIDGE_PORT'):
         cfg['port'] = int(os.environ['PRINTBRIDGE_PORT'])

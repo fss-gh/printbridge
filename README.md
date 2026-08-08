@@ -25,7 +25,7 @@ PrintBridge is a lightweight local agent that runs in your system tray. Any web 
 ### Install from source
 
 ```bash
-git clone https://github.com/your-username/printbridge.git
+git clone https://github.com/AnouarSbia/printbridge.git
 cd printbridge
 pip install -r requirements.txt
 python agent.py

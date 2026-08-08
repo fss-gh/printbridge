@@ -7,7 +7,7 @@ Thank you for your interest in contributing to PrintBridge! This document outlin
 1. **Fork** the repository on GitHub
 2. **Clone** your fork locally:
    ```bash
-   git clone https://github.com/your-username/printbridge.git
+   git clone https://github.com/AnouarSbia/printbridge.git
    cd printbridge
    ```
 3. **Install dependencies**:
