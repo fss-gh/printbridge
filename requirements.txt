@@ -3,6 +3,6 @@ flask-cors>=4.0
 pystray>=0.19
 Pillow>=10.0
 arabic-reshaper>=3.0
-python-bidi>=0.4
+python-bidi>=0.6.11
 pyinstaller>=6.0
 pywin32>=306; sys_platform == 'win32'
