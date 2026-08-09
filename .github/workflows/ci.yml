@@ -26,17 +26,22 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pytest pytest-cov
 
       - name: Check syntax
         run: |
           python -m py_compile agent.py
-          python -m py_compile tspl_sender.py
           python -m py_compile generate_icon.py
-          python -m py_compile test_tspl_label.py
 
-      - name: Run agent import test
+      - name: Run tests
         run: |
-          python -c "import agent; print('Agent imports successfully')"
+          pytest tests/ -v --tb=short --cov=printbridge --cov-report=term
+
+      - name: Import check
+        run: |
+          python -c "from printbridge.config import PrintBridgeConfig; print('Config OK')"
+          python -c "from printbridge.server.app import create_app; print('Server OK')"
+          python -c "from printbridge.tspl.label_builder import build_tspl_label; print('TSPL OK')"
 
   windows-build:
     runs-on: windows-latest
@@ -56,9 +61,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pytest
 
       - name: Check syntax
         run: |
           python -m py_compile agent.py
-          python -m py_compile tspl_sender.py
           python -m py_compile generate_icon.py
+          python -m py_compile tspl_sender.py
+
+      - name: Run tests
+        run: |
+          pytest tests/ -v --tb=short

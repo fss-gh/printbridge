@@ -1,0 +1,1 @@
+"""TSPL label generation module."""
