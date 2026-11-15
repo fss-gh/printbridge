@@ -1,14 +1,18 @@
-"""Windows printer backend using win32print and SumatraPDF."""
+"""Windows printer backend using win32print and CLI PDF printers (SumatraPDF/Adobe Reader)."""
 
 import logging
 import os
+import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 
 from .base import PrinterBackend
 
 logger = logging.getLogger("printbridge")
+
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def _delayed_cleanup(path: str, delay: int = 15) -> None:
@@ -22,29 +26,123 @@ def _delayed_cleanup(path: str, delay: int = 15) -> None:
         pass
 
 
+def _bundle_dir() -> str:
+    """Return the PyInstaller bundle root when frozen, else the source directory."""
+    if hasattr(sys, "_MEIPASS"):
+        return str(sys._MEIPASS)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def _find_in_app_paths(executable_name: str) -> str | None:
+    """Find an installed executable using Windows App Paths registry keys."""
+    try:
+        import winreg
+    except ImportError:
+        return None
+
+    for root in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+        try:
+            with winreg.OpenKey(
+                root,
+                rf"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{executable_name}",
+            ) as key:
+                value, _ = winreg.QueryValueEx(key, None)
+                if value and os.path.isfile(value):
+                    return value
+        except OSError:
+            continue
+    return None
+
+
 def _find_sumatra() -> str | None:
     """Find SumatraPDF executable on Windows."""
     candidates = [
-        os.path.join(os.environ.get("LOCALAPPDATA", ""), "SumatraPDF", "SumatraPDF.exe"),
-        os.path.join(os.environ.get("PROGRAMFILES", ""), "SumatraPDF", "SumatraPDF.exe"),
-        os.path.join(os.environ.get("PROGRAMFILES(X86)", ""), "SumatraPDF", "SumatraPDF.exe"),
+        # Bundled copy: when frozen by PyInstaller, SumatraPDF.exe is placed at
+        # the bundle root (_MEIPASS) via the spec's datas entry.
+        os.path.join(_bundle_dir(), "SumatraPDF.exe"),
+        # Source checkout: next to this module or in the project root
+        # (where PrintBridge.spec expects SumatraPDF.exe to be placed).
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "SumatraPDF.exe"),
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "SumatraPDF.exe",
+        ),
     ]
+    for env in ("LOCALAPPDATA", "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432"):
+        base = os.environ.get(env)
+        if base:
+            candidates.append(os.path.join(base, "SumatraPDF", "SumatraPDF.exe"))
+
     for path in candidates:
         if path and os.path.isfile(path):
             return path
+
+    app_path = _find_in_app_paths("SumatraPDF.exe")
+    if app_path:
+        return app_path
+
     try:
-        result = subprocess.run(
-            ["where", "SumatraPDF.exe"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip().split("\n")[0].strip()
+        exe = shutil.which("SumatraPDF.exe")
+        if exe:
+            return exe
     except Exception:
         pass
     return None
+
+
+def _find_adobe_reader() -> str | None:
+    """Locate Adobe Acrobat/Reader, which supports silent /t printing."""
+    candidates = []
+    for env in ("PROGRAMFILES(X86)", "PROGRAMFILES", "PROGRAMW6432"):
+        base = os.environ.get(env)
+        if base:
+            candidates.extend(
+                [
+                    os.path.join(base, "Adobe", "Acrobat Reader DC", "Reader", "AcroRd32.exe"),
+                    os.path.join(base, "Adobe", "Acrobat DC", "Acrobat", "Acrobat.exe"),
+                    os.path.join(base, "Adobe", "Acrobat", "Acrobat.exe"),
+                ]
+            )
+
+    for path in candidates:
+        if path and os.path.isfile(path):
+            return path
+
+    for name in ("AcroRd32.exe", "Acrobat.exe"):
+        app_path = _find_in_app_paths(name)
+        if app_path:
+            return app_path
+        try:
+            exe = shutil.which(name)
+            if exe:
+                return exe
+        except Exception:
+            pass
+    return None
+
+
+def _sumatra_print_settings(
+    copies: int,
+    media_width: float | None,
+    media_height: float | None,
+) -> str:
+    """Build SumatraPDF -print-settings, including copies and optional paper size."""
+    settings = [f"{copies}x"]
+    if media_width and media_height:
+        try:
+            w = float(media_width)
+            h = float(media_height)
+        except (TypeError, ValueError):
+            logger.warning("Ignoring invalid mediaWidth/mediaHeight for SumatraPDF print")
+            return ",".join(settings)
+        settings.append(f"paper={w:g}mm x {h:g}mm")
+        settings.append("fit")
+    return ",".join(settings)
+
+
+def _powershell_quote(value: str) -> str:
+    """Quote a value for a PowerShell single-quoted literal."""
+    return "'" + value.replace("'", "''") + "'"
 
 
 class WindowsBackend(PrinterBackend):
@@ -105,7 +203,14 @@ class WindowsBackend(PrinterBackend):
         media_width: float | None = None,
         media_height: float | None = None,
     ) -> bool:
-        """Print PDF using SumatraPDF, PowerShell, or ShellExecute fallback."""
+        """Print a PDF silently.
+
+        Strategy order:
+        1. SumatraPDF CLI (bundled with PyInstaller or auto-detected, has error codes)
+        2. Adobe Acrobat/Reader CLI (/t prints to a named printer)
+        3. PowerShell Start-Process -Verb PrintTo (depends on the default PDF viewer)
+        4. ShellExecute printto fallback
+        """
         import win32api
         import win32print
 
@@ -125,11 +230,17 @@ class WindowsBackend(PrinterBackend):
                     cmd = [
                         sumatra,
                         "-print-to", target_printer,
-                        "-print-settings", f"{copies}x",
+                        "-print-settings", _sumatra_print_settings(copies, media_width, media_height),
                         "-silent",
                         tmp_path,
                     ]
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                        creationflags=_NO_WINDOW,
+                    )
                     if result.returncode == 0:
                         printed = True
                         logger.info(f"Printed {copies} copies to {target_printer} via SumatraPDF")
@@ -138,13 +249,34 @@ class WindowsBackend(PrinterBackend):
                 except Exception as e:
                     logger.warning(f"SumatraPDF error: {e}")
 
-            # Strategy 2: PowerShell
+            # Strategy 2: Adobe Acrobat/Reader CLI (/t)
+            if not printed:
+                adobe = _find_adobe_reader()
+                if adobe:
+                    try:
+                        for _ in range(copies):
+                            result = subprocess.run(
+                                [adobe, "/t", tmp_path, target_printer],
+                                capture_output=True,
+                                text=True,
+                                timeout=120,
+                                creationflags=_NO_WINDOW,
+                            )
+                            if result.returncode != 0:
+                                raise Exception(f"Adobe exit {result.returncode}: {result.stderr}")
+                        printed = True
+                        logger.info(f"Printed {copies} copies to {target_printer} via Adobe Reader")
+                    except Exception as e:
+                        logger.warning(f"Adobe Reader print failed: {e}")
+
+            # Strategy 3: PowerShell Start-Process -Verb PrintTo
             if not printed:
                 try:
                     ps_cmd = (
-                        f'Start-Process -FilePath "{tmp_path}" '
-                        f'-Verb PrintTo -ArgumentList \'"{target_printer}"\' '
-                        f"-WindowStyle Hidden -Wait"
+                        "$ErrorActionPreference = 'Stop'; "
+                        f"Start-Process -FilePath {_powershell_quote(tmp_path)} "
+                        f"-Verb PrintTo -ArgumentList {_powershell_quote(f'\"{target_printer}\"')} "
+                        "-WindowStyle Hidden -Wait"
                     )
                     for _ in range(copies):
                         result = subprocess.run(
@@ -152,6 +284,7 @@ class WindowsBackend(PrinterBackend):
                             capture_output=True,
                             text=True,
                             timeout=120,
+                            creationflags=_NO_WINDOW,
                         )
                         if result.returncode != 0:
                             raise Exception(f"PowerShell exit {result.returncode}: {result.stderr}")
@@ -160,23 +293,29 @@ class WindowsBackend(PrinterBackend):
                 except Exception as e:
                     logger.warning(f"PowerShell print failed: {e}")
 
-            # Strategy 3: ShellExecute fallback
+            # Strategy 4: ShellExecute printto fallback
             if not printed:
                 try:
                     for _ in range(copies):
-                        win32api.ShellExecute(
+                        ret = win32api.ShellExecute(
                             0, "printto", tmp_path,
                             f'"{target_printer}"', ".", 0,
                         )
+                        # ShellExecute returns <= 32 on failure; it does not raise for
+                        # every error, so check the return value explicitly.
+                        if ret <= 32:
+                            raise Exception(f"ShellExecute printto failed with code {ret}")
                     printed = True
                     logger.info(f"Printed {copies} copies to {target_printer} via ShellExecute")
                 except Exception as e:
                     logger.error(f"ShellExecute also failed: {e}")
                     raise Exception(
                         f'All print methods failed for printer "{target_printer}". '
-                        f"Please install SumatraPDF for reliable silent printing: "
-                        f"https://www.sumatrapdfreader.org/download-free-pdf-viewer"
-                    )
+                        f"Install SumatraPDF (https://www.sumatrapdfreader.org/download-free-pdf-viewer) "
+                        f"or configure a PDF viewer that supports silent command-line printing "
+                        f"(e.g. Adobe Reader). Microsoft Edge does not provide a reliable "
+                        f"silent PrintTo interface."
+                    ) from e
 
             cleanup_thread = threading.Thread(
                 target=_delayed_cleanup, args=(tmp_path, 30), daemon=True

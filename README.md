@@ -277,6 +277,18 @@ Produces:
 - `dist\PrintBridge.exe` — standalone executable
 - `PrintBridge-Setup.exe` — NSIS installer (if NSIS is installed)
 
+#### Bundling SumatraPDF.exe (recommended)
+
+Windows silent PDF printing uses SumatraPDF. To make the built `.exe` fully self-contained, bundle SumatraPDF into the package so target machines do not need to install it:
+
+1. Download the official portable/standalone `SumatraPDF.exe` from the [SumatraPDF download page](https://www.sumatrapdfreader.org/download-free-pdf-viewer).
+2. Copy `SumatraPDF.exe` to the project root, i.e. the same directory as `build_windows.bat` and `PrintBridge.spec`.
+3. Run `build_windows.bat` again.
+
+`build_windows.bat` automatically detects `SumatraPDF.exe` and passes it to PyInstaller with `--add-data "SumatraPDF.exe;."`. If it is missing, the build still succeeds and PrintBridge will look for a system-installed SumatraPDF/Adobe Reader at runtime.
+
+> **Note:** SumatraPDF is distributed under GPLv3. If you redistribute the built executable, make sure you comply with the GPLv3 license terms (for example, by providing the corresponding source/license information).
+
 ### macOS
 
 ```bash
@@ -303,7 +315,7 @@ Produces:
 ### PDF Printing
 
 - **macOS/Linux**: Uses `lp` command with optional media size for thermal printers
-- **Windows**: Uses SumatraPDF (if installed), falls back to PowerShell `Start-Process`, then `ShellExecute`
+- **Windows**: Uses the bundled `SumatraPDF.exe` when packaged (otherwise auto-detects an installed SumatraPDF), then falls back to Adobe Reader `/t`, PowerShell `Start-Process -Verb PrintTo`, and finally `ShellExecute`
 
 ### TSPL Label Printing
 
@@ -362,7 +374,7 @@ async function printLabel(tsplCommands, printerName) {
 | Label is blank | Verify label dimensions match your media |
 | Port 9120 in use | Change port in `config.json` or set `PRINTBRIDGE_PORT` env var |
 | CORS error | Add your domain to `cors_origins` in `config.json` |
-| PDF won't print on Windows | Install [SumatraPDF](https://www.sumatrapdfreader.org/) for reliable silent printing |
+| PDF won't print on Windows | Make sure `SumatraPDF.exe` is bundled (place it in the project root and rebuild) or install [SumatraPDF](https://www.sumatrapdfreader.org/) on the machine |
 | Arabic text not rendering | Install `arabic-reshaper` and `python-bidi` (included in requirements.txt) |
 
 ## Contributing
