@@ -11,6 +11,37 @@ from ..printers.base import PrinterBackend
 
 logger = logging.getLogger("printbridge")
 
+TRANSLATIONS = {
+    "zh": {
+        "running": "● 运行中",
+        "printers_detected": "检测到 {count} 台打印机",
+        "printers": "打印机",
+        "no_printers": "未找到打印机",
+        "port": "端口：{port}",
+        "view_logs": "查看日志",
+        "quit": "退出",
+        "language": "语言",
+        "language_zh": "中文",
+        "language_en": "English",
+        "tooltip": "{tray_name} — 运行中（{count} 台打印机）",
+        "notify_ready": "代理已就绪 — 检测到 {count} 台打印机（端口 {port}）",
+    },
+    "en": {
+        "running": "● Running",
+        "printers_detected": "{count} printer(s) detected",
+        "printers": "Printers",
+        "no_printers": "No printers found",
+        "port": "Port: {port}",
+        "view_logs": "View logs",
+        "quit": "Quit",
+        "language": "Language",
+        "language_zh": "中文",
+        "language_en": "English",
+        "tooltip": "{tray_name} — Running ({count} printer(s))",
+        "notify_ready": "Agent ready — {count} printer(s) detected (port {port})",
+    },
+}
+
 
 def get_icon_path() -> str:
     """Get the path to the tray icon."""
@@ -57,30 +88,74 @@ def run_tray(config: PrintBridgeConfig, printer_backend: PrinterBackend) -> None
         printer_count = len(printer_list)
         tray_name = config.tray_name
 
-        menu = pystray.Menu(
-            pystray.MenuItem(f"{tray_name} v{config.port and '1.0.0'}", None, enabled=False),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("● Running", None, enabled=False),
-            pystray.MenuItem(
-                f"{printer_count} printer{'s' if printer_count != 1 else ''} detected",
-                None,
-                enabled=False,
-            ),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem(
-                "Printers",
-                pystray.Menu(
-                    *[pystray.MenuItem(p, None, enabled=False) for p in printer_list]
-                    or [pystray.MenuItem("No printers found", None, enabled=False)]
-                ),
-            ),
-            pystray.MenuItem(f"Port: {config.port}", None, enabled=False),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("View logs", on_open_log),
-            pystray.MenuItem("Quit", on_quit),
-        )
+        # Current UI language. Can be changed from the tray menu and is
+        # persisted to config.json so it survives restarts.
+        state = {
+            "language": config.language if config.language in TRANSLATIONS else "zh"
+        }
 
-        tooltip = f"{tray_name} — Running ({printer_count} printer{'s' if printer_count != 1 else ''})"
+        def _tr(key: str, **kwargs) -> str:
+            """Translate a key using the current language."""
+            return TRANSLATIONS[state["language"]][key].format(**kwargs)
+
+        def _build_menu():
+            return pystray.Menu(
+                pystray.MenuItem(f"{tray_name} v{config.port and '1.0.0'}", None, enabled=False),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem(_tr("running"), None, enabled=False),
+                pystray.MenuItem(
+                    _tr("printers_detected", count=printer_count),
+                    None,
+                    enabled=False,
+                ),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem(
+                    _tr("printers"),
+                    pystray.Menu(
+                        *[pystray.MenuItem(p, None, enabled=False) for p in printer_list]
+                        or [pystray.MenuItem(_tr("no_printers"), None, enabled=False)]
+                    ),
+                ),
+                pystray.MenuItem(_tr("port", port=config.port), None, enabled=False),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem(
+                    _tr("language"),
+                    pystray.Menu(
+                        pystray.MenuItem(
+                            _tr("language_zh"),
+                            lambda icon, item: _set_language(icon, "zh"),
+                            checked=lambda item: state["language"] == "zh",
+                            radio=True,
+                        ),
+                        pystray.MenuItem(
+                            _tr("language_en"),
+                            lambda icon, item: _set_language(icon, "en"),
+                            checked=lambda item: state["language"] == "en",
+                            radio=True,
+                        ),
+                    ),
+                ),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem(_tr("view_logs"), on_open_log),
+                pystray.MenuItem(_tr("quit"), on_quit),
+            )
+
+        def _set_language(icon, language):
+            state["language"] = language
+            config.language = language
+            try:
+                config.save()
+            except Exception as e:
+                logger.warning(f"Failed to save language setting: {e}")
+            icon.menu = _build_menu()
+            icon.title = _tr("tooltip", tray_name=tray_name, count=printer_count)
+            try:
+                icon.update_menu()
+            except Exception as e:
+                logger.warning(f"Failed to update tray menu language: {e}")
+
+        menu = _build_menu()
+        tooltip = _tr("tooltip", tray_name=tray_name, count=printer_count)
         icon = pystray.Icon("printbridge", image, tooltip, menu)
         logger.info("System tray icon started")
 
@@ -93,7 +168,7 @@ def run_tray(config: PrintBridgeConfig, printer_backend: PrinterBackend) -> None
                 time.sleep(2)
                 try:
                     icon.notify(
-                        f"Agent ready — {printer_count} printer{'s' if printer_count != 1 else ''} detected (port {config.port})",
+                        _tr("notify_ready", count=printer_count, port=config.port),
                         tray_name,
                     )
                 except Exception:

@@ -12,5 +12,6 @@
     "gap_mm": 2
   },
   "footer_text": "PrintBridge",
-  "tray_name": "PrintBridge"
+  "tray_name": "PrintBridge",
+  "language": "zh"
 }

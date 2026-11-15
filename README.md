@@ -234,7 +234,8 @@ Edit `config.json` in the same directory as `agent.py`:
     "gap_mm": 2
   },
   "footer_text": "PrintBridge",
-  "tray_name": "PrintBridge"
+  "tray_name": "PrintBridge",
+  "language": "zh"
 }
 ```
 
@@ -245,6 +246,7 @@ Edit `config.json` in the same directory as `agent.py`:
 | `PRINTBRIDGE_PORT` | `9120` | Override the port |
 | `PRINTBRIDGE_FOOTER` | `PrintBridge` | Override footer text on labels |
 | `PRINTBRIDGE_TRAY_NAME` | `PrintBridge` | Override tray icon name |
+| `PRINTBRIDGE_LANGUAGE` | `zh` | Override UI language (`zh` or `en`) |
 
 ### CORS
 
