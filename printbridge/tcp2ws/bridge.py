@@ -24,6 +24,7 @@ from .remote_agent import (
     TRIGGER_HOTKEY_F1,
     create_remote_agent_server,
 )
+from .runtime import update as update_runtime_status
 from .windows import simulate_hotkey
 
 logger = logging.getLogger("printbridge.tcp2ws")
@@ -518,6 +519,18 @@ class Tcp2WsBridge:
         import websockets
 
         config = self.config
+        update_runtime_status(
+            enabled=True,
+            starting=True,
+            running=False,
+            error=None,
+            host=config.host,
+            tcp_port=config.tcp_port,
+            ws_port=config.ws_port,
+            remote_agent_enabled=config.remote_agent_enabled,
+            remote_agent_port=config.remote_agent_port,
+            remote_agent_running=False,
+        )
         logger.info("=" * 60)
         logger.info("  激光打标通信桥接程序")
         logger.info(f"  运行平台: {sys.platform}")
@@ -547,6 +560,7 @@ class Tcp2WsBridge:
                     logger.info(
                         f"Remote hotkey agent started: tcp://{config.remote_agent_host}:{config.remote_agent_port}"
                     )
+                    update_runtime_status(remote_agent_running=True)
 
             tcp_server = await asyncio.start_server(
                 self.handle_tcp_client,
@@ -567,6 +581,7 @@ class Tcp2WsBridge:
             )
             await stack.enter_async_context(ws_server)
             logger.info(f"WS service started: ws://{config.host}:{config.ws_port}")
+            update_runtime_status(running=True, starting=False, error=None)
 
             logger.info("Background request cleanup task started")
             await asyncio.Future()

@@ -8,6 +8,7 @@ import threading
 
 from ..config import PrintBridgeConfig
 from ..printers.base import PrinterBackend
+from ..tcp2ws.runtime import get_status, set_config as set_runtime_config
 
 logger = logging.getLogger("printbridge")
 
@@ -21,6 +22,17 @@ TRANSLATIONS = {
         "view_logs": "查看日志",
         "view_agent_log": "主程序日志",
         "view_tcp2ws_log": "tcp2ws 日志",
+        "tcp2ws": "tcp2ws",
+        "tcp2ws_status": "状态：{status}",
+        "tcp2ws_ports": "端口：TCP {tcp_port} / WS {ws_port}",
+        "tcp2ws_remote_agent": "远程热键代理：{status}（端口 {port}）",
+        "tcp2ws_running": "运行中",
+        "tcp2ws_starting": "启动中",
+        "tcp2ws_stopped": "未运行",
+        "tcp2ws_disabled": "已禁用",
+        "tcp2ws_error": "异常",
+        "tcp2ws_remote_enabled": "已启用",
+        "tcp2ws_remote_stopped": "未运行",
         "quit": "退出",
         "language": "语言",
         "language_zh": "中文",
@@ -37,6 +49,17 @@ TRANSLATIONS = {
         "view_logs": "View logs",
         "view_agent_log": "Main program log",
         "view_tcp2ws_log": "tcp2ws log",
+        "tcp2ws": "tcp2ws",
+        "tcp2ws_status": "Status: {status}",
+        "tcp2ws_ports": "Ports: TCP {tcp_port} / WS {ws_port}",
+        "tcp2ws_remote_agent": "Remote hotkey agent: {status} (port {port})",
+        "tcp2ws_running": "Running",
+        "tcp2ws_starting": "Starting",
+        "tcp2ws_stopped": "Stopped",
+        "tcp2ws_disabled": "Disabled",
+        "tcp2ws_error": "Error",
+        "tcp2ws_remote_enabled": "Enabled",
+        "tcp2ws_remote_stopped": "Not running",
         "quit": "Quit",
         "language": "Language",
         "language_zh": "中文",
@@ -110,6 +133,44 @@ def run_tray(config: PrintBridgeConfig, printer_backend: PrinterBackend) -> None
             """Translate a key using the current language."""
             return TRANSLATIONS[state["language"]][key].format(**kwargs)
 
+        try:
+            from ..tcp2ws.config import Tcp2WsConfig
+
+            set_runtime_config(Tcp2WsConfig.from_dict(config.tcp2ws))
+        except Exception as e:
+            logger.warning(f"Failed to initialize tcp2ws status: {e}")
+
+        def _tcp2ws_status_text() -> str:
+            status = get_status()
+            if not status.get("enabled"):
+                return _tr("tcp2ws_status", status=_tr("tcp2ws_disabled"))
+            if status.get("running"):
+                label = "tcp2ws_running"
+            elif status.get("starting"):
+                label = "tcp2ws_starting"
+            elif status.get("error"):
+                label = "tcp2ws_error"
+            else:
+                label = "tcp2ws_stopped"
+            return _tr("tcp2ws_status", status=_tr(label))
+
+        def _tcp2ws_ports_text() -> str:
+            status = get_status()
+            tcp_port = status.get("tcp_port") or config.tcp2ws.get("tcp_port", "?")
+            ws_port = status.get("ws_port") or config.tcp2ws.get("ws_port", "?")
+            return _tr("tcp2ws_ports", tcp_port=tcp_port, ws_port=ws_port)
+
+        def _tcp2ws_remote_agent_text() -> str:
+            status = get_status()
+            port = status.get("remote_agent_port") or config.tcp2ws.get("remote_agent_port", "?")
+            if not status.get("remote_agent_enabled"):
+                return _tr("tcp2ws_remote_agent", status=_tr("tcp2ws_disabled"), port=port)
+            if status.get("remote_agent_running"):
+                remote_label = "tcp2ws_remote_enabled"
+            else:
+                remote_label = "tcp2ws_remote_stopped"
+            return _tr("tcp2ws_remote_agent", status=_tr(remote_label), port=port)
+
         def _build_menu():
             return pystray.Menu(
                 pystray.MenuItem(f"{tray_name} v{config.port and '1.0.0'}", None, enabled=False),
@@ -129,6 +190,18 @@ def run_tray(config: PrintBridgeConfig, printer_backend: PrinterBackend) -> None
                     ),
                 ),
                 pystray.MenuItem(_tr("port", port=config.port), None, enabled=False),
+                pystray.MenuItem(
+                    _tr("tcp2ws"),
+                    pystray.Menu(
+                        pystray.MenuItem(lambda item: _tcp2ws_status_text(), None, enabled=False),
+                        pystray.MenuItem(lambda item: _tcp2ws_ports_text(), None, enabled=False),
+                        pystray.MenuItem(
+                            lambda item: _tcp2ws_remote_agent_text(),
+                            None,
+                            enabled=False,
+                        ),
+                    ),
+                ),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem(
                     _tr("language"),

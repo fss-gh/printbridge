@@ -50,11 +50,16 @@ def run_tcp2ws_bridge(config: PrintBridgeConfig, logger: logging.Logger) -> None
 
         from printbridge.tcp2ws.bridge import Tcp2WsBridge
         from printbridge.tcp2ws.config import Tcp2WsConfig
+        from printbridge.tcp2ws.runtime import (
+            set_config as set_runtime_config,
+            update as update_runtime_status,
+        )
 
         # tcp2ws writes to its own tcp2ws.log instead of agent.log.
         setup_tcp2ws_logging(config.log_path)
 
         tcp2ws_config = Tcp2WsConfig.from_dict(config.tcp2ws)
+        set_runtime_config(tcp2ws_config)
         if not tcp2ws_config.enabled:
             logger.info("tcp2ws bridge is disabled")
             return
@@ -63,8 +68,20 @@ def run_tcp2ws_bridge(config: PrintBridgeConfig, logger: logging.Logger) -> None
             f"Starting tcp2ws bridge: TCP {tcp2ws_config.tcp_port}, WS {tcp2ws_config.ws_port}"
         )
         asyncio.run(Tcp2WsBridge(tcp2ws_config).run())
+        update_runtime_status(
+            running=False,
+            starting=False,
+            remote_agent_running=False,
+            error=None,
+        )
     except Exception as e:
         logger.error(f"tcp2ws bridge stopped with error: {e}")
+        update_runtime_status(
+            running=False,
+            starting=False,
+            remote_agent_running=False,
+            error=str(e),
+        )
 
 
 def main() -> None:
