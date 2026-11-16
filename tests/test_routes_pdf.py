@@ -32,6 +32,29 @@ def test_print_pdf_not_a_pdf(client):
     assert "pdf" in response.get_json()["error"].lower()
 
 
+def test_normalize_font_families():
+    from printbridge.server.routes.pdf import _normalize_font_families
+
+    svg = '<text font-family="Alibaba PuHuiTi">试</text>'
+    assert "Alibaba PuHuiTi 3.0" in _normalize_font_families(svg)
+
+    # Already-correct family names must not be rewritten twice.
+    svg = '<text font-family="Alibaba PuHuiTi 3.0">试</text>'
+    normalized = _normalize_font_families(svg)
+    assert normalized.count("Alibaba PuHuiTi 3.0") == 1
+
+    # Fallback lists and single-quoted attributes are handled too.
+    svg = "<text font-family='Alibaba PuHuiTi, sans-serif'>试</text>"
+    assert "Alibaba PuHuiTi 3.0, sans-serif" in _normalize_font_families(svg)
+
+    # Latin font family alias (AlibabaSans -> Alibaba Sans).
+    svg = '<text font-family="AlibabaSans">ABC</text>'
+    assert "Alibaba Sans" in _normalize_font_families(svg)
+    svg = '<text font-family="Alibaba Sans">ABC</text>'
+    normalized = _normalize_font_families(svg)
+    assert normalized.count("Alibaba Sans") == 1
+
+
 def test_print_svg_success(client, mock_printer_backend):
     import base64
 

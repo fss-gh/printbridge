@@ -322,7 +322,7 @@ Windows 静默 PDF 打印使用 SumatraPDF。为了让构建出的 `.exe` 完全
 
 - **macOS/Linux**：使用 `lp` 命令，可附带热敏打印机的介质尺寸
 - **Windows**：优先使用打包内置的 `SumatraPDF.exe`（否则自动检测已安装的 SumatraPDF），再回退到 PowerShell `Start-Process -Verb PrintTo`，最后是 `ShellExecute`
-- **SVG**：SVG 数据使用 `svg2pdf-py` 转换为 PDF，并加载 `fonts/` 目录中内置的字体，因此中文（及其他 Unicode 文本）可以正确渲染
+- **SVG**：SVG 数据使用 `svg2pdf-py` 转换为 PDF，并加载 `fonts/` 目录中内置的字体（中文使用 Alibaba PuHuiTi 3.0，西文使用 Alibaba Sans，同时保留系统字体作为兜底），因此中文（及其他 Unicode 文本）可以正确渲染
 
 ### TSPL 标签打印
 

@@ -2,6 +2,7 @@
 
 import base64
 import logging
+import re
 import sys
 from pathlib import Path
 
@@ -12,6 +13,16 @@ logger = logging.getLogger("printbridge")
 
 _font_database = None
 
+# Map common short names to the actual family names embedded in the
+# bundled fonts under fonts/:
+# - Alibaba PuHuiTi 3.0 (CJK: AlibabaPuHuiTi-*.otf)
+# - Alibaba Sans (Latin: AlibabaSans-*.otf)
+_FONT_FAMILY_ALIASES = {
+    "Alibaba PuHuiTi": "Alibaba PuHuiTi 3.0",
+    "AlibabaPuHuiTi": "Alibaba PuHuiTi 3.0",
+    "AlibabaSans": "Alibaba Sans",
+}
+
 
 def _fonts_dir() -> Path:
     """Return the bundled fonts directory (project root or PyInstaller bundle)."""
@@ -21,20 +32,22 @@ def _fonts_dir() -> Path:
 
 
 def _get_font_database():
-    """Return a cached FontDatabase pre-loaded with bundled fonts."""
+    """Return a cached FontDatabase with system fonts plus bundled fonts.
+
+    Bundled fonts from fonts/ are added on top of the system font
+    database; the system fonts provide generic fallback so SVG text is
+    never silently dropped.
+    """
     global _font_database
     if _font_database is None:
         from svg2pdf_py import FontDatabase
 
         fonts_dir = _fonts_dir()
-        db = FontDatabase()
+        db = FontDatabase.system()
         if fonts_dir.is_dir():
             db.load_fonts_dir(str(fonts_dir))
         else:
-            logger.warning(
-                f"Bundled fonts directory not found: {fonts_dir}; falling back to system fonts"
-            )
-            db = FontDatabase.system()
+            logger.warning(f"Bundled fonts directory not found: {fonts_dir}")
         _font_database = db
     return _font_database
 
@@ -45,11 +58,36 @@ def _looks_like_svg(data: bytes) -> bool:
     return head.startswith((b"<svg", b"<SVG", b"<?xml", b"<!DOCTYPE svg", b"<!--"))
 
 
+def _normalize_font_families(svg_text: str) -> str:
+    """Map short/common font-family names to the bundled fonts' real names."""
+
+    def _replace(match: re.Match) -> str:
+        prefix, value, quote = match.groups()
+        for alias, family in _FONT_FAMILY_ALIASES.items():
+            escaped = re.escape(alias)
+            # Avoid rewriting exact families like "Alibaba PuHuiTi 3.0"
+            # a second time, and avoid matching inside hyphenated filenames.
+            value = re.sub(
+                rf"(?<![A-Za-z0-9]){escaped}(?![A-Za-z0-9-])(?!\s*3\.0)",
+                family,
+                value,
+                flags=re.IGNORECASE,
+            )
+        return prefix + value + quote
+
+    return re.sub(
+        r'(font-family\s*=\s*["\'])([^"\']*?)(["\'])',
+        _replace,
+        svg_text,
+        flags=re.IGNORECASE,
+    )
+
+
 def _svg_to_pdf(data: bytes) -> bytes:
     """Convert SVG bytes to PDF bytes using svg2pdf-py and bundled fonts."""
     from svg2pdf_py import svg_to_pdf
 
-    svg_text = data.decode("utf-8-sig")
+    svg_text = _normalize_font_families(data.decode("utf-8-sig"))
     return svg_to_pdf(svg_text, _get_font_database())
 
 

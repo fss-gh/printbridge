@@ -322,7 +322,7 @@ Produces:
 
 - **macOS/Linux**: Uses `lp` command with optional media size for thermal printers
 - **Windows**: Uses the bundled `SumatraPDF.exe` when packaged (otherwise auto-detects an installed SumatraPDF), then falls back to PowerShell `Start-Process -Verb PrintTo`, and finally `ShellExecute`
-- **SVG**: SVG payloads are converted to PDF with `svg2pdf-py` using the bundled fonts from `fonts/`, so Chinese (and other Unicode) text is rendered correctly
+- **SVG**: SVG payloads are converted to PDF with `svg2pdf-py` using the bundled fonts from `fonts/` (Alibaba PuHuiTi 3.0 for Chinese, Alibaba Sans for Latin; system fonts are kept as fallback), so Chinese (and other Unicode) text is rendered correctly
 
 ### TSPL Label Printing
 
