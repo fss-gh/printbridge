@@ -12,7 +12,7 @@ PrintBridge 是一个运行在系统托盘的轻量本地代理。任意 Web 应
 
 ## 功能特性
 
-- **静默 PDF 打印** —— 不弹出对话框即可把 PDF 打印到任意系统打印机
+- **静默 PDF/SVG 打印** —— 不弹出对话框即可把 PDF，或自动转换为 PDF 的 SVG 打印到任意系统打印机
 - **TSPL 标签打印** —— 原生 TSPL 指令，支持热敏打印机（TSC、Xprinter、Zebra 等）
 - **二维码** —— 直接在 TSPL 标签中生成二维码
 - **Unicode 支持** —— 自动将非 ASCII 文本（阿拉伯文、中文等）转为位图渲染
@@ -84,12 +84,12 @@ curl http://127.0.0.1:9120/api/status
 
 ### `POST /api/print`
 
-静默打印 PDF 文档。
+静默打印 PDF 文档，或自动转换为 PDF 的 SVG 文档。
 
 **请求：**
 ```json
 {
-  "pdf": "<base64-encoded PDF bytes>",
+  "pdf": "<base64-encoded PDF or SVG bytes>",
   "printer": "HP LaserJet",
   "copies": 1,
   "mediaWidth": 100,
@@ -99,7 +99,7 @@ curl http://127.0.0.1:9120/api/status
 
 | 字段 | 类型 | 必填 | 说明 |
 |-------|------|----------|-------------|
-| `pdf` | 字符串 | 是 | Base64 编码的 PDF 数据 |
+| `pdf` | 字符串 | 是 | Base64 编码的 PDF 或 SVG 数据 |
 | `printer` | 字符串 | 否 | 打印机名称（默认：系统默认打印机） |
 | `copies` | 整数 | 否 | 打印份数（1-99，默认：1） |
 | `mediaWidth` | 数字 | 否 | 标签宽度，单位 mm（用于热敏打印机） |
@@ -268,7 +268,7 @@ curl http://127.0.0.1:9120/api/status
 
 ### 环境要求
 
-- Python 3.10+
+- Python 3.10+（Windows 下使用 `svg2pdf-py` 打印 SVG 需要 Python 3.11+）
 - `pip install -r requirements.txt`
 
 ### Windows
@@ -289,7 +289,9 @@ Windows 静默 PDF 打印使用 SumatraPDF。为了让构建出的 `.exe` 完全
 2. 将 `SumatraPDF.exe` 复制到项目根目录，即与 `build_windows.bat`、`PrintBridge.spec` 相同的目录。
 3. 重新运行 `build_windows.bat`。
 
-`build_windows.bat` 会自动检测 `SumatraPDF.exe`，并通过 `--add-data "SumatraPDF.exe;."` 传给 PyInstaller。如果文件不存在，构建仍会成功，PrintBridge 会在运行时自动查找系统已安装的 SumatraPDF/Adobe Reader。
+`build_windows.bat` 会自动检测 `SumatraPDF.exe`，并通过 `--add-data "SumatraPDF.exe;."` 传给 PyInstaller。如果文件不存在，构建仍会成功，PrintBridge 会在运行时自动查找系统已安装的 SumatraPDF。
+
+`build_windows.bat` 也会自动打包 `fonts/` 目录（`--add-data "fonts;fonts"`），因此 SVG 转 PDF 使用的字体会被内置到可执行文件中。
 
 > **注意：** SumatraPDF 采用 GPLv3 协议分发。如果重新分发构建出的可执行文件，请确保遵守 GPLv3 许可条款（例如提供对应的源码/许可证信息）。
 
@@ -319,7 +321,8 @@ Windows 静默 PDF 打印使用 SumatraPDF。为了让构建出的 `.exe` 完全
 ### PDF 打印
 
 - **macOS/Linux**：使用 `lp` 命令，可附带热敏打印机的介质尺寸
-- **Windows**：优先使用打包内置的 `SumatraPDF.exe`（否则自动检测已安装的 SumatraPDF），再依次回退到 Adobe Reader `/t`、PowerShell `Start-Process -Verb PrintTo`，最后是 `ShellExecute`
+- **Windows**：优先使用打包内置的 `SumatraPDF.exe`（否则自动检测已安装的 SumatraPDF），再回退到 PowerShell `Start-Process -Verb PrintTo`，最后是 `ShellExecute`
+- **SVG**：SVG 数据使用 `svg2pdf-py` 转换为 PDF，并加载 `fonts/` 目录中内置的字体，因此中文（及其他 Unicode 文本）可以正确渲染
 
 ### TSPL 标签打印
 

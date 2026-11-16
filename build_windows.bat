@@ -8,7 +8,7 @@ REM    1. Python 3.10+ installed and on PATH
 REM    2. pip install -r requirements.txt
 REM    3. (Optional) Put SumatraPDF.exe in this folder so it is bundled
 REM       into the .exe. If missing, PrintBridge will look for a
-REM       system-installed SumatraPDF/Adobe Reader at runtime.
+REM       system-installed SumatraPDF at runtime.
 REM ================================================================
 
 echo.
@@ -43,6 +43,7 @@ call pyinstaller ^
     --icon icon.ico ^
     --add-data "icon.png;." ^
     --add-data "tspl_sender.py;." ^
+    --add-data "fonts;fonts" ^
     --exclude-module pymupdf ^
     --exclude-module fitz ^
     --hidden-import pystray._win32 ^
@@ -50,6 +51,7 @@ call pyinstaller ^
     --hidden-import win32api ^
     --hidden-import arabic_reshaper ^
     --hidden-import bidi ^
+    --hidden-import svg2pdf_py ^
     --clean ^
     --noconfirm ^
     %SUMATRA_DATA% agent.py

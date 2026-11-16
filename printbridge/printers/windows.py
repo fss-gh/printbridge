@@ -1,4 +1,4 @@
-"""Windows printer backend using win32print and CLI PDF printers (SumatraPDF/Adobe Reader)."""
+"""Windows printer backend using win32print and CLI PDF printers (SumatraPDF)."""
 
 import logging
 import os
@@ -90,37 +90,6 @@ def _find_sumatra() -> str | None:
     return None
 
 
-def _find_adobe_reader() -> str | None:
-    """Locate Adobe Acrobat/Reader, which supports silent /t printing."""
-    candidates = []
-    for env in ("PROGRAMFILES(X86)", "PROGRAMFILES", "PROGRAMW6432"):
-        base = os.environ.get(env)
-        if base:
-            candidates.extend(
-                [
-                    os.path.join(base, "Adobe", "Acrobat Reader DC", "Reader", "AcroRd32.exe"),
-                    os.path.join(base, "Adobe", "Acrobat DC", "Acrobat", "Acrobat.exe"),
-                    os.path.join(base, "Adobe", "Acrobat", "Acrobat.exe"),
-                ]
-            )
-
-    for path in candidates:
-        if path and os.path.isfile(path):
-            return path
-
-    for name in ("AcroRd32.exe", "Acrobat.exe"):
-        app_path = _find_in_app_paths(name)
-        if app_path:
-            return app_path
-        try:
-            exe = shutil.which(name)
-            if exe:
-                return exe
-        except Exception:
-            pass
-    return None
-
-
 def _sumatra_print_settings(
     copies: int,
     media_width: float | None,
@@ -207,9 +176,8 @@ class WindowsBackend(PrinterBackend):
 
         Strategy order:
         1. SumatraPDF CLI (bundled with PyInstaller or auto-detected, has error codes)
-        2. Adobe Acrobat/Reader CLI (/t prints to a named printer)
-        3. PowerShell Start-Process -Verb PrintTo (depends on the default PDF viewer)
-        4. ShellExecute printto fallback
+        2. PowerShell Start-Process -Verb PrintTo (depends on the default PDF viewer)
+        3. ShellExecute printto fallback
         """
         import win32api
         import win32print
@@ -249,27 +217,7 @@ class WindowsBackend(PrinterBackend):
                 except Exception as e:
                     logger.warning(f"SumatraPDF error: {e}")
 
-            # Strategy 2: Adobe Acrobat/Reader CLI (/t)
-            if not printed:
-                adobe = _find_adobe_reader()
-                if adobe:
-                    try:
-                        for _ in range(copies):
-                            result = subprocess.run(
-                                [adobe, "/t", tmp_path, target_printer],
-                                capture_output=True,
-                                text=True,
-                                timeout=120,
-                                creationflags=_NO_WINDOW,
-                            )
-                            if result.returncode != 0:
-                                raise Exception(f"Adobe exit {result.returncode}: {result.stderr}")
-                        printed = True
-                        logger.info(f"Printed {copies} copies to {target_printer} via Adobe Reader")
-                    except Exception as e:
-                        logger.warning(f"Adobe Reader print failed: {e}")
-
-            # Strategy 3: PowerShell Start-Process -Verb PrintTo
+            # Strategy 2: PowerShell Start-Process -Verb PrintTo
             if not printed:
                 try:
                     ps_cmd = (
@@ -293,7 +241,7 @@ class WindowsBackend(PrinterBackend):
                 except Exception as e:
                     logger.warning(f"PowerShell print failed: {e}")
 
-            # Strategy 4: ShellExecute printto fallback
+            # Strategy 3: ShellExecute printto fallback
             if not printed:
                 try:
                     for _ in range(copies):
@@ -312,9 +260,8 @@ class WindowsBackend(PrinterBackend):
                     raise Exception(
                         f'All print methods failed for printer "{target_printer}". '
                         f"Install SumatraPDF (https://www.sumatrapdfreader.org/download-free-pdf-viewer) "
-                        f"or configure a PDF viewer that supports silent command-line printing "
-                        f"(e.g. Adobe Reader). Microsoft Edge does not provide a reliable "
-                        f"silent PrintTo interface."
+                        f"or configure a PDF viewer that supports silent command-line printing. "
+                        f"Microsoft Edge does not provide a reliable silent PrintTo interface."
                     ) from e
 
             cleanup_thread = threading.Thread(

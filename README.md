@@ -12,7 +12,7 @@ PrintBridge is a lightweight local agent that runs in your system tray. Any web 
 
 ## Features
 
-- **Silent PDF printing** — print PDFs to any system printer without dialogs
+- **Silent PDF/SVG printing** — print PDFs, or SVGs converted to PDF, without dialogs
 - **TSPL label printing** — native TSPL commands for thermal printers (TSC, Xprinter, Zebra, etc.)
 - **QR codes** — generate QR codes directly in TSPL labels
 - **Unicode support** — automatic bitmap rendering for non-ASCII text (Arabic, Chinese, etc.)
@@ -84,12 +84,12 @@ List available system printers.
 
 ### `POST /api/print`
 
-Print a PDF document silently.
+Print a PDF document or an SVG document (converted to PDF) silently.
 
 **Request:**
 ```json
 {
-  "pdf": "<base64-encoded PDF bytes>",
+  "pdf": "<base64-encoded PDF or SVG bytes>",
   "printer": "HP LaserJet",
   "copies": 1,
   "mediaWidth": 100,
@@ -99,7 +99,7 @@ Print a PDF document silently.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `pdf` | string | Yes | Base64-encoded PDF data |
+| `pdf` | string | Yes | Base64-encoded PDF or SVG data |
 | `printer` | string | No | Printer name (default: system default) |
 | `copies` | int | No | Number of copies (1-99, default: 1) |
 | `mediaWidth` | number | No | Label width in mm (for thermal printers) |
@@ -268,7 +268,7 @@ By default, PrintBridge only accepts requests from `localhost`. To allow your we
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.10+ (SVG printing via `svg2pdf-py` requires Python 3.11+ on Windows)
 - `pip install -r requirements.txt`
 
 ### Windows
@@ -289,7 +289,9 @@ Windows silent PDF printing uses SumatraPDF. To make the built `.exe` fully self
 2. Copy `SumatraPDF.exe` to the project root, i.e. the same directory as `build_windows.bat` and `PrintBridge.spec`.
 3. Run `build_windows.bat` again.
 
-`build_windows.bat` automatically detects `SumatraPDF.exe` and passes it to PyInstaller with `--add-data "SumatraPDF.exe;."`. If it is missing, the build still succeeds and PrintBridge will look for a system-installed SumatraPDF/Adobe Reader at runtime.
+`build_windows.bat` automatically detects `SumatraPDF.exe` and passes it to PyInstaller with `--add-data "SumatraPDF.exe;."`. If it is missing, the build still succeeds and PrintBridge will look for a system-installed SumatraPDF at runtime.
+
+`build_windows.bat` also bundles the `fonts/` directory automatically (`--add-data "fonts;fonts"`), so the fonts used for SVG-to-PDF conversion are embedded in the executable.
 
 > **Note:** SumatraPDF is distributed under GPLv3. If you redistribute the built executable, make sure you comply with the GPLv3 license terms (for example, by providing the corresponding source/license information).
 
@@ -319,7 +321,8 @@ Produces:
 ### PDF Printing
 
 - **macOS/Linux**: Uses `lp` command with optional media size for thermal printers
-- **Windows**: Uses the bundled `SumatraPDF.exe` when packaged (otherwise auto-detects an installed SumatraPDF), then falls back to Adobe Reader `/t`, PowerShell `Start-Process -Verb PrintTo`, and finally `ShellExecute`
+- **Windows**: Uses the bundled `SumatraPDF.exe` when packaged (otherwise auto-detects an installed SumatraPDF), then falls back to PowerShell `Start-Process -Verb PrintTo`, and finally `ShellExecute`
+- **SVG**: SVG payloads are converted to PDF with `svg2pdf-py` using the bundled fonts from `fonts/`, so Chinese (and other Unicode) text is rendered correctly
 
 ### TSPL Label Printing
 

@@ -23,6 +23,7 @@ pyinstaller \
     --windowed \
     --icon icon_macos.png \
     --add-data "icon.png:." \
+    --add-data "fonts:fonts" \
     --hidden-import pystray._darwin \
     --osx-bundle-identifier com.printbridge.agent \
     agent.py
