@@ -52,6 +52,8 @@ call pyinstaller ^
     --hidden-import arabic_reshaper ^
     --hidden-import bidi ^
     --hidden-import svg2pdf_py ^
+    --hidden-import websockets ^
+    --collect-submodules printbridge.tcp2ws ^
     --clean ^
     --noconfirm ^
     %SUMATRA_DATA% agent.py

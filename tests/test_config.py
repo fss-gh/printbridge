@@ -11,6 +11,9 @@ def test_config_defaults():
     assert config.footer_text == "PrintBridge"
     assert config.tray_name == "PrintBridge"
     assert "http://localhost:*" in config.cors_origins
+    assert config.tcp2ws["remote_agent_port"] == 9999
+    assert config.tcp2ws["remote_markers"] == [{"ip": "192.168.0.251", "port": 9999}]
+    assert config.tcp2ws["tcp_command_prefix"] == "TCP:"
 
 
 def test_config_env_override(monkeypatch):

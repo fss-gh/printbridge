@@ -237,9 +237,52 @@ curl http://127.0.0.1:9120/api/status
   },
   "footer_text": "PrintBridge",
   "tray_name": "PrintBridge",
-  "language": "zh"
+  "language": "zh",
+  "tcp2ws": {
+    "enabled": true,
+    "host": "0.0.0.0",
+    "tcp_port": 9090,
+    "ws_port": 8181,
+    "max_tcp_clients": 100,
+    "close_tcp_when_ws_down": true,
+    "request_expire_seconds": 30,
+    "win_title": "激光打标软件",
+    "remote_agent_enabled": true,
+    "remote_agent_host": "0.0.0.0",
+    "remote_agent_port": 9999,
+    "remote_markers": [
+      {
+        "ip": "192.168.0.251",
+        "port": 9999
+      }
+    ],
+    "tcp_command_prefix": "TCP:",
+    "tcp_commands": [
+      "TCP:sampleCode",
+      "TCP:sampleCode1",
+      "TCP:sampleCode2",
+      "TCP:customerCode",
+      "TCP:sampleName",
+      "TCP:sampleName1",
+      "TCP:sampleName2",
+      "TCP:companyName",
+      "TCP:nextTestDate",
+      "TCP:QRCodeContent"
+    ],
+    "esc_hotkey_interval_seconds": 8,
+    "ws_response_timeout": 5,
+    "ws_max_retries": 2,
+    "tcp_read_timeout": 30,
+    "tcp_read_buffer": 4096
+  }
 }
 ```
+
+> **端口说明**：主程序的 HTTP 端口（`port`，默认 `9120`）与 tcp2ws 的 `tcp_port`（默认 `9090`）、`ws_port`（默认 `8181`）相互独立，**不要**共用同一个端口。若不需要 tcp2ws 桥接，可把 `tcp2ws.enabled` 设为 `false`。
+>
+> **日志说明**：tcp2ws 日志独立写入 `<log_dir>/tcp2ws.log`；托盘菜单“查看日志”可以分别打开主程序日志和 tcp2ws 日志。
+>
+> **热键与协议说明**：`remote_markers` 可配置多台远程从机（每台从机需运行远程热键代理服务）；`tcp_command_prefix` 和 `tcp_commands` 可自定义 TCP 命令前缀与命令表。
 
 ### 环境变量
 

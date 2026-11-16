@@ -25,6 +25,8 @@ pyinstaller \
     --add-data "icon.png:." \
     --add-data "fonts:fonts" \
     --hidden-import pystray._darwin \
+    --hidden-import websockets \
+    --collect-submodules printbridge.tcp2ws \
     --osx-bundle-identifier com.printbridge.agent \
     agent.py
 

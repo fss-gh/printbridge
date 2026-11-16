@@ -237,9 +237,52 @@ Edit `config.json` in the same directory as `agent.py`:
   },
   "footer_text": "PrintBridge",
   "tray_name": "PrintBridge",
-  "language": "zh"
+  "language": "zh",
+  "tcp2ws": {
+    "enabled": true,
+    "host": "0.0.0.0",
+    "tcp_port": 9090,
+    "ws_port": 8181,
+    "max_tcp_clients": 100,
+    "close_tcp_when_ws_down": true,
+    "request_expire_seconds": 30,
+    "win_title": "激光打标软件",
+    "remote_agent_enabled": true,
+    "remote_agent_host": "0.0.0.0",
+    "remote_agent_port": 9999,
+    "remote_markers": [
+      {
+        "ip": "192.168.0.251",
+        "port": 9999
+      }
+    ],
+    "tcp_command_prefix": "TCP:",
+    "tcp_commands": [
+      "TCP:sampleCode",
+      "TCP:sampleCode1",
+      "TCP:sampleCode2",
+      "TCP:customerCode",
+      "TCP:sampleName",
+      "TCP:sampleName1",
+      "TCP:sampleName2",
+      "TCP:companyName",
+      "TCP:nextTestDate",
+      "TCP:QRCodeContent"
+    ],
+    "esc_hotkey_interval_seconds": 8,
+    "ws_response_timeout": 5,
+    "ws_max_retries": 2,
+    "tcp_read_timeout": 30,
+    "tcp_read_buffer": 4096
+  }
 }
 ```
+
+> **Ports**: The main HTTP port (`port`, default `9120`) is independent from the tcp2ws `tcp_port` (default `9090`) and `ws_port` (default `8181`). Do **not** reuse the same port number. Set `tcp2ws.enabled` to `false` to disable the bridge.
+>
+> **Logs**: tcp2ws writes its own log to `<log_dir>/tcp2ws.log`; the tray “View logs” menu can open both the main program log and the tcp2ws log.
+>
+> **Hotkeys & protocol**: `remote_markers` supports multiple remote marking computers (each runs the remote hotkey agent service); `tcp_command_prefix` and `tcp_commands` customize the TCP command prefix and command list.
 
 ### Environment Variables
 

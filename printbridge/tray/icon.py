@@ -19,6 +19,8 @@ TRANSLATIONS = {
         "no_printers": "未找到打印机",
         "port": "端口：{port}",
         "view_logs": "查看日志",
+        "view_agent_log": "主程序日志",
+        "view_tcp2ws_log": "tcp2ws 日志",
         "quit": "退出",
         "language": "语言",
         "language_zh": "中文",
@@ -33,6 +35,8 @@ TRANSLATIONS = {
         "no_printers": "No printers found",
         "port": "Port: {port}",
         "view_logs": "View logs",
+        "view_agent_log": "Main program log",
+        "view_tcp2ws_log": "tcp2ws log",
         "quit": "Quit",
         "language": "Language",
         "language_zh": "中文",
@@ -75,14 +79,22 @@ def run_tray(config: PrintBridgeConfig, printer_backend: PrinterBackend) -> None
             icon.stop()
             os._exit(0)
 
-        def on_open_log(icon, item):
-            log_file = str(config.log_path / "agent.log")
+        def _open_path(path):
+            if not path.exists():
+                path = path.parent
+            target = str(path)
             if sys.platform == "darwin":
-                subprocess.Popen(["open", log_file])
+                subprocess.Popen(["open", target])
             elif sys.platform == "win32":
-                os.startfile(log_file)  # type: ignore
+                os.startfile(target)  # type: ignore
             else:
-                subprocess.Popen(["xdg-open", log_file])
+                subprocess.Popen(["xdg-open", target])
+
+        def on_open_log(icon, item):
+            _open_path(config.log_path / "agent.log")
+
+        def on_open_tcp2ws_log(icon, item):
+            _open_path(config.log_path / "tcp2ws.log")
 
         printer_list = printer_backend.list_printers()
         printer_count = len(printer_list)
@@ -136,7 +148,13 @@ def run_tray(config: PrintBridgeConfig, printer_backend: PrinterBackend) -> None
                     ),
                 ),
                 pystray.Menu.SEPARATOR,
-                pystray.MenuItem(_tr("view_logs"), on_open_log),
+                pystray.MenuItem(
+                    _tr("view_logs"),
+                    pystray.Menu(
+                        pystray.MenuItem(_tr("view_agent_log"), on_open_log),
+                        pystray.MenuItem(_tr("view_tcp2ws_log"), on_open_tcp2ws_log),
+                    ),
+                ),
                 pystray.MenuItem(_tr("quit"), on_quit),
             )
 
