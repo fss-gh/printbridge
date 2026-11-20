@@ -101,6 +101,18 @@ def test_tcp2ws_logging_writes_to_separate_file(tmp_path):
     assert "tcp2ws separate log test" in log_file.read_text(encoding="utf-8")
 
 
+def test_tcp2ws_logging_rotates_files(tmp_path):
+    log_dir = tmp_path / "logs"
+    logger = setup_tcp2ws_logging(log_dir, max_bytes=512, backup_count=2)
+    for index in range(20):
+        logger.info("x" * 80 + f" {index}")
+
+    assert (log_dir / "tcp2ws.log").exists()
+    assert (log_dir / "tcp2ws.log.1").exists()
+    assert (log_dir / "tcp2ws.log.2").exists()
+    assert not (log_dir / "tcp2ws.log.3").exists()
+
+
 def test_config_from_dict_legacy_remote_keys():
     cfg = Tcp2WsConfig.from_dict(
         {

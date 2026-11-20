@@ -280,7 +280,7 @@ curl http://127.0.0.1:9120/api/status
 
 > **端口说明**：主程序的 HTTP 端口（`port`，默认 `9120`）与 tcp2ws 的 `tcp_port`（默认 `9090`）、`ws_port`（默认 `8181`）相互独立，**不要**共用同一个端口。若不需要 tcp2ws 桥接，可把 `tcp2ws.enabled` 设为 `false`。
 >
-> **日志说明**：tcp2ws 日志独立写入 `<log_dir>/tcp2ws.log`；托盘菜单“查看日志”可以分别打开主程序日志和 tcp2ws 日志。
+> **日志说明**：主程序写入 `<log_dir>/agent.log`，tcp2ws 独立写入 `<log_dir>/tcp2ws.log`；托盘菜单“查看日志”可以分别打开两个日志。两个日志均按 5 MB 自动轮转，各保留 5 个历史文件（`*.log.1` 到 `*.log.5`），单个日志最多约 30 MB，不会无限增长。
 >
 > **热键与协议说明**：`remote_markers` 可配置多台远程从机（每台从机需运行远程热键代理服务）；`tcp_command_prefix` 和 `tcp_commands` 可自定义 TCP 命令前缀与命令表。
 

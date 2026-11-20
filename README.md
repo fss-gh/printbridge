@@ -280,7 +280,7 @@ Edit `config.json` in the same directory as `agent.py`:
 
 > **Ports**: The main HTTP port (`port`, default `9120`) is independent from the tcp2ws `tcp_port` (default `9090`) and `ws_port` (default `8181`). Do **not** reuse the same port number. Set `tcp2ws.enabled` to `false` to disable the bridge.
 >
-> **Logs**: tcp2ws writes its own log to `<log_dir>/tcp2ws.log`; the tray “View logs” menu can open both the main program log and the tcp2ws log.
+> **Logs**: the main program writes `<log_dir>/agent.log`, while tcp2ws writes its own `<log_dir>/tcp2ws.log`; the tray “View logs” menu can open both. Both logs rotate at 5 MB and keep 5 backups (`*.log.1` through `*.log.5`), so each is bounded at roughly 30 MB instead of growing forever.
 >
 > **Hotkeys & protocol**: `remote_markers` supports multiple remote marking computers (each runs the remote hotkey agent service); `tcp_command_prefix` and `tcp_commands` customize the TCP command prefix and command list.
 
