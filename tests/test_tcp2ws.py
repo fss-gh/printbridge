@@ -35,7 +35,7 @@ def test_config_defaults():
     assert cfg.ws_port == DEFAULT_CONFIG["ws_port"]
     assert cfg.close_tcp_when_ws_down is True
     assert cfg.close_tcp_on_print_end is False
-    assert cfg.f1_start_cooldown_seconds == 90
+    assert cfg.f1_start_cooldown_seconds == 20
     assert cfg.win_title == "激光打标软件"
 
 
