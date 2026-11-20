@@ -31,6 +31,8 @@ class Tcp2WsConfig:
     ws_port: int = 8181
     max_tcp_clients: int = 100
     close_tcp_when_ws_down: bool = True
+    close_tcp_on_print_end: bool = False
+    f1_start_cooldown_seconds: int = 0
     request_expire_seconds: int = 30
     win_title: str = "激光打标软件"
     remote_agent_enabled: bool = True
@@ -99,6 +101,7 @@ class Tcp2WsConfig:
                 "ws_port",
                 "remote_agent_port",
                 "max_tcp_clients",
+                "f1_start_cooldown_seconds",
                 "request_expire_seconds",
                 "esc_hotkey_interval_seconds",
                 "ws_response_timeout",
@@ -108,7 +111,12 @@ class Tcp2WsConfig:
             ):
                 cfg[int_key] = int(cfg[int_key])
 
-            for bool_key in ("enabled", "close_tcp_when_ws_down", "remote_agent_enabled"):
+            for bool_key in (
+                "enabled",
+                "close_tcp_when_ws_down",
+                "close_tcp_on_print_end",
+                "remote_agent_enabled",
+            ):
                 value = cfg[bool_key]
                 cfg[bool_key] = value.lower() == "true" if isinstance(value, str) else bool(value)
 

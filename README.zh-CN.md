@@ -245,6 +245,8 @@ curl http://127.0.0.1:9120/api/status
     "ws_port": 8181,
     "max_tcp_clients": 100,
     "close_tcp_when_ws_down": true,
+    "close_tcp_on_print_end": false,
+    "f1_start_cooldown_seconds": 90,
     "request_expire_seconds": 30,
     "win_title": "激光打标软件",
     "remote_agent_enabled": true,
@@ -283,6 +285,8 @@ curl http://127.0.0.1:9120/api/status
 > **日志说明**：主程序写入 `<log_dir>/agent.log`，tcp2ws 独立写入 `<log_dir>/tcp2ws.log`；托盘菜单“查看日志”可以分别打开两个日志。两个日志均按 5 MB 自动轮转，各保留 5 个历史文件（`*.log.1` 到 `*.log.5`），单个日志最多约 30 MB，不会无限增长。
 >
 > **热键与协议说明**：`remote_markers` 可配置多台远程从机（每台从机需运行远程热键代理服务）；`tcp_command_prefix` 和 `tcp_commands` 可自定义 TCP 命令前缀与命令表。
+>
+> **任务生命周期**：收到前端 `print_end` 后，桥接程序立即停止 TCP 数据服务：仍在等待的请求会被丢弃，之后到达的 TCP 命令不再转发，晚到的 WS 响应也不会写回 TCP；直到下一次 F1 才重新开放。默认 `close_tcp_on_print_end=false`，即发送 ESC 结束热键后**不关闭 TCP 连接**，连接保留给下一轮复用；若确实需要在每次任务结束时断开 TCP，可设为 `true`。WS 异常断开时是否关闭 TCP 连接仍由 `close_tcp_when_ws_down` 控制。`f1_start_cooldown_seconds` 控制 `print_end` 后到下一次 F1 的最小等待时间（默认 90 秒，设为 `0` 可关闭）：现场若在结束工作后很快开始下一件标签，激光软件可能仍处于结束状态而忽略 F1，此冷却可避免连续任务交替失败。
 
 ### 环境变量
 

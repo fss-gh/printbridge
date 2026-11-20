@@ -245,6 +245,8 @@ Edit `config.json` in the same directory as `agent.py`:
     "ws_port": 8181,
     "max_tcp_clients": 100,
     "close_tcp_when_ws_down": true,
+    "close_tcp_on_print_end": false,
+    "f1_start_cooldown_seconds": 90,
     "request_expire_seconds": 30,
     "win_title": "激光打标软件",
     "remote_agent_enabled": true,
@@ -283,6 +285,8 @@ Edit `config.json` in the same directory as `agent.py`:
 > **Logs**: the main program writes `<log_dir>/agent.log`, while tcp2ws writes its own `<log_dir>/tcp2ws.log`; the tray “View logs” menu can open both. Both logs rotate at 5 MB and keep 5 backups (`*.log.1` through `*.log.5`), so each is bounded at roughly 30 MB instead of growing forever.
 >
 > **Hotkeys & protocol**: `remote_markers` supports multiple remote marking computers (each runs the remote hotkey agent service); `tcp_command_prefix` and `tcp_commands` customize the TCP command prefix and command list.
+>
+> **Job lifecycle**: on a frontend `print_end` event the bridge immediately stops serving TCP data: in-flight requests are discarded, later TCP commands are not forwarded, and late WebSocket responses are not written back, until the next F1 starts a new job. By default `close_tcp_on_print_end=false`: after sending the ESC finish hotkey the bridge **does not close TCP connections**, so the connection is reused for the next job. Set it to `true` if TCP connections must be closed after every job. Unexpected WebSocket disconnects are still controlled by `close_tcp_when_ws_down`. `f1_start_cooldown_seconds` sets the minimum wait after `print_end` before the next F1 (default 90 seconds; use `0` to disable). If the next label starts too soon after finishing a job, the marking software may still be in its finishing state and ignore F1; this cooldown prevents alternating job failures.
 
 ### Environment Variables
 

@@ -21,6 +21,8 @@
     "ws_port": 8181,
     "max_tcp_clients": 100,
     "close_tcp_when_ws_down": true,
+    "close_tcp_on_print_end": false,
+    "f1_start_cooldown_seconds": 0,
     "request_expire_seconds": 30,
     "win_title": "激光打标软件",
     "remote_agent_enabled": true,

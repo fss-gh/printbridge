@@ -30,6 +30,8 @@ DEFAULT_CONFIG = {
         "ws_port": 8181,
         "max_tcp_clients": 100,
         "close_tcp_when_ws_down": True,
+        "close_tcp_on_print_end": False,
+        "f1_start_cooldown_seconds": 90,
         "request_expire_seconds": 30,
         "win_title": "激光打标软件",
         "remote_agent_enabled": True,

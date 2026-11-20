@@ -112,7 +112,17 @@ class Tcp2WsBridge:
         self.config = config or Tcp2WsConfig.from_dict()
         self.active_requests: OrderedDict[str, tuple] = OrderedDict()
         self.ws_client = None
-        self.ws_reconnect_flag = False
+        # Request IDs that belonged to an older WebSocket session. They are
+        # cleaned up later, but requests arriving on the new connection must
+        # not be included in that cleanup.
+        self.stale_request_ids: set[str] = set()
+        self.background_tasks: set[asyncio.Task] = set()
+        self.start_job_task: asyncio.Task | None = None
+        self.last_print_end_time: float | None = None
+        # After print_end the current batch is finished and the frontend data
+        # pool is gone. Do not serve any further TCP commands until the next
+        # F1 starts a new job.
+        self.accepting_requests = True
         self.global_tcp_close_flag = False
         self.tcp_command_prefix = self.config.tcp_command_prefix.encode("utf-8")
         self.tcp_commands = [cmd.encode("utf-8") for cmd in self.config.tcp_commands]
@@ -207,13 +217,8 @@ class Tcp2WsBridge:
         if tasks:
             await asyncio.gather(*tasks)
 
-    async def close_all_tcp_clients_gracefully(self) -> None:
-        """Notify the marking software, then close all active TCP clients."""
-        if self.global_tcp_close_flag:
-            return
-        self.global_tcp_close_flag = True
-        logger.info("Starting graceful shutdown of all TCP clients...")
-
+    async def notify_print_finished(self) -> None:
+        """Send the ESC sequence that tells the marking software to stop."""
         config = self.config
         logger.info("Notifying marking software with ESC hotkey (finish job)")
         await self.trigger_remote_hotkey(True, False)
@@ -225,6 +230,105 @@ class Tcp2WsBridge:
         await asyncio.sleep(1)
         await asyncio.sleep(config.esc_hotkey_interval_seconds)
         simulate_hotkey(config.win_title, exec_esc=True, exec_f1=False)
+
+    def discard_pending_requests(self, reason: str) -> None:
+        """Fail in-flight requests without closing their TCP connections.
+
+        This unblocks the TCP client handlers so they can read the next job's
+        data on the same connection.
+        """
+        pending_count = len(self.active_requests)
+        if pending_count:
+            logger.info(f"Discarding {pending_count} pending request(s): {reason}")
+        for rid, entry in list(self.active_requests.items()):
+            future = entry[2] if len(entry) > 2 else None
+            if future is not None and not future.done():
+                future.set_exception(RuntimeError(reason))
+            self.active_requests.pop(rid, None)
+
+    async def finish_print_job(self) -> None:
+        """Finish a print job without closing TCP client connections.
+
+        The marking software keeps its TCP connection between jobs. Closing
+        that connection after ``print_end`` forces it to reconnect, but the
+        software does not always do so before the next F1 job starts. Keeping
+        the connection alive lets the next job reuse it.
+        """
+        logger.info("print_end received; sending ESC while keeping TCP clients connected")
+        # The batch is already finished and the frontend data pool is gone.
+        # TCP data service is stopped in handle_websocket(); this task only
+        # performs the ESC sequence without blocking the WebSocket loop.
+        await self.notify_print_finished()
+
+    def schedule_print_finish(self) -> None:
+        """Run the ESC sequence in the background.
+
+        The ESC sequence takes about 15 seconds. Waiting for it inside the
+        WebSocket loop would stop us from reading late WS responses while the
+        laser side is still requesting data after ``print_end``.
+        """
+        task = asyncio.create_task(self.finish_print_job())
+        self.background_tasks.add(task)
+        task.add_done_callback(self._on_background_task_done)
+
+    def _on_background_task_done(self, task: asyncio.Task) -> None:
+        self.background_tasks.discard(task)
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"Background print-finish task failed: {e}")
+
+    async def start_job_after_delay(self, websocket) -> None:
+        """Start the next job after pending ESC work and the cooldown.
+
+        This runs in the background so the WebSocket loop keeps processing
+        messages while we wait. TCP data stays disabled by print_end until
+        the F1 is actually sent.
+        """
+        try:
+            if self.background_tasks:
+                logger.info("Waiting for the previous ESC sequence to finish before F1")
+                await asyncio.gather(
+                    *list(self.background_tasks), return_exceptions=True
+                )
+
+            cooldown = self.config.f1_start_cooldown_seconds
+            if cooldown > 0 and self.last_print_end_time is not None:
+                remaining = cooldown - (
+                    time.monotonic() - self.last_print_end_time
+                )
+                if remaining > 0:
+                    logger.info(
+                        f"Waiting {remaining:.1f}s before F1 "
+                        f"(print_end cooldown {cooldown}s)"
+                    )
+                    await asyncio.sleep(remaining)
+                self.last_print_end_time = None
+
+            if self.ws_client is not websocket:
+                logger.info("WS client changed while waiting; skipping F1")
+                return
+
+            self.accepting_requests = True
+            logger.info("Notifying marking software with F1 hotkey (start job)")
+            simulate_hotkey(self.config.win_title, exec_esc=False, exec_f1=True)
+            await self.trigger_remote_hotkey(False, True)
+        except asyncio.CancelledError:
+            logger.info("Pending F1 start cancelled")
+            raise
+        except Exception as e:
+            logger.error(f"Failed to start job after delay: {e}")
+
+    async def close_all_tcp_clients_gracefully(self) -> None:
+        """Notify the marking software, then close all active TCP clients."""
+        if self.global_tcp_close_flag:
+            return
+        self.global_tcp_close_flag = True
+        logger.info("Starting graceful shutdown of all TCP clients...")
+
+        await self.notify_print_finished()
 
         tcp_clients = list(self.active_requests.items())
         for rid, entry in tcp_clients:
@@ -252,23 +356,25 @@ class Tcp2WsBridge:
                 expired_ids: list[str] = []
 
                 for rid, entry in list(self.active_requests.items()):
-                    writer, create_time = entry[0], entry[1]
+                    _, create_time = entry[0], entry[1]
                     if current_time - create_time > expire_seconds:
                         expired_ids.append(rid)
                         future = entry[2] if len(entry) > 2 else None
                         if future and not future.done():
-                            future.set_exception(asyncio.TimeoutError())
-                        if not writer.is_closing():
-                            try:
-                                writer.close()
-                                await writer.wait_closed()
-                            except Exception:
-                                pass
+                            future.set_exception(RuntimeError("request_expired"))
+                        # Keep the TCP writer open: the laser side reuses this
+                        # connection for the next job. Closing it on an expired
+                        # request was the original cause of alternating
+                        # successful/failed jobs.
 
-                if self.ws_reconnect_flag:
-                    logger.info("WS reconnected; clearing stale request IDs")
-                    expired_ids.extend(list(self.active_requests.keys()))
-                    self.ws_reconnect_flag = False
+                if self.stale_request_ids:
+                    logger.info("WS session changed; clearing stale request IDs")
+                    for rid in list(self.stale_request_ids):
+                        entry = self.active_requests.pop(rid, None)
+                        future = entry[2] if entry and len(entry) > 2 else None
+                        if future is not None and not future.done():
+                            future.set_exception(RuntimeError("stale_ws_session"))
+                    self.stale_request_ids.clear()
 
                 for rid in expired_ids:
                     self.active_requests.pop(rid, None)
@@ -297,6 +403,8 @@ class Tcp2WsBridge:
             client_id = f"{addr[0]}:{addr[1]}"
         else:
             client_id = "unknown"
+
+        logger.info(f"TCP client connected: {client_id}")
 
         if self.global_tcp_close_flag:
             logger.info(f"Rejecting new TCP connection during global shutdown: {client_id}")
@@ -354,11 +462,18 @@ class Tcp2WsBridge:
 
                 for command in commands:
                     seq_counter += 1
+                    payload = command.decode("utf-8", errors="ignore")
+                    if not self.accepting_requests:
+                        logger.warning(
+                            f"print_end received; dropping TCP command "
+                            f"[{payload}] seq={seq_counter}"
+                        )
+                        continue
+
                     request_id = uuid.uuid4().hex
                     future = asyncio.get_running_loop().create_future()
                     self.active_requests[request_id] = (writer, time.time(), future)
 
-                    payload = command.decode("utf-8", errors="ignore")
                     crc = zlib.crc32(payload.encode("utf-8")) & 0xFFFFFFFF
                     ws_message = json.dumps(
                         {
@@ -384,15 +499,21 @@ class Tcp2WsBridge:
                     retry = 0
                     try:
                         while retry <= max_retries:
+                            ws_session = self.ws_client
+                            if ws_session is None:
+                                self.active_requests.pop(request_id, None)
+                                logger.error(f"WS client disconnected; request dropped: {request_id}")
+                                break
                             try:
-                                await self.ws_client.send(ws_message)
+                                await ws_session.send(ws_message)
                                 logger.info(
                                     f"Forwarded to WS [{len(ws_message)} bytes] "
                                     f"id={request_id} seq={seq_counter} attempt={retry + 1}"
                                 )
                             except ConnectionClosed:
-                                self.ws_client = None
-                                self.ws_reconnect_flag = True
+                                if self.ws_client is ws_session:
+                                    self.ws_client = None
+                                self.stale_request_ids.update(self.active_requests.keys())
                                 logger.error(f"WS client connection closed: {client_id}")
                                 break
 
@@ -448,15 +569,37 @@ class Tcp2WsBridge:
             return
 
         self.ws_client = websocket
-        self.ws_reconnect_flag = True
+        # Requests left over from an older WS session can never receive a
+        # response now. Fail them without closing the TCP clients so their
+        # handlers are free to read the new job's data on the same socket.
+        if self.active_requests:
+            self.discard_pending_requests("WS session changed")
         logger.info("WS client connected (new connection)")
 
         config = self.config
-        logger.info("Notifying marking software with F1 hotkey (start job)")
-        simulate_hotkey(config.win_title, exec_esc=False, exec_f1=True)
-        await self.trigger_remote_hotkey(False, True)
+        cooldown_remaining = 0.0
+        cooldown = config.f1_start_cooldown_seconds
+        if cooldown > 0 and self.last_print_end_time is not None:
+            cooldown_remaining = max(
+                0.0, cooldown - (time.monotonic() - self.last_print_end_time)
+            )
+
+        if self.background_tasks or cooldown_remaining > 0:
+            # Do not block the WebSocket loop while waiting. Any late
+            # responses from the finished batch are ignored by the
+            # accepting_requests gate.
+            self.start_job_task = asyncio.create_task(
+                self.start_job_after_delay(websocket)
+            )
+        else:
+            self.last_print_end_time = None
+            self.accepting_requests = True
+            logger.info("Notifying marking software with F1 hotkey (start job)")
+            simulate_hotkey(config.win_title, exec_esc=False, exec_f1=True)
+            await self.trigger_remote_hotkey(False, True)
 
         graceful_end_requested = False
+        print_end_handled = False
         try:
             async for message in websocket:
                 try:
@@ -470,16 +613,40 @@ class Tcp2WsBridge:
                     continue
 
                 if msg.get("event") == "print_end":
-                    logger.info("Received print_end event; starting graceful TCP shutdown")
+                    if print_end_handled:
+                        logger.info("Duplicate print_end event ignored")
+                        continue
+                    print_end_handled = True
                     graceful_end_requested = True
-                    await self.close_all_tcp_clients_gracefully()
-                    break
+                    self.last_print_end_time = time.monotonic()
+                    self.accepting_requests = False
+                    # The batch is finished and the frontend data pool is gone.
+                    # Fail in-flight requests without closing the TCP writers,
+                    # then drop any further TCP commands until the next F1.
+                    self.discard_pending_requests("print_end received")
+                    if config.close_tcp_on_print_end:
+                        logger.info("Received print_end event; closing TCP clients")
+                        await self.close_all_tcp_clients_gracefully()
+                        break
+                    logger.info(
+                        "Received print_end event; stopping TCP data service "
+                        "until the next F1"
+                    )
+                    self.schedule_print_finish()
+                    continue
 
                 request_id = msg.get("request_id")
                 seq = msg.get("seq")
                 response = msg.get("response")
                 if not request_id or response is None:
                     logger.warning("WS message missing request_id or response; ignoring")
+                    continue
+
+                if not self.accepting_requests:
+                    logger.warning(
+                        f"Ignoring WS response id={request_id} seq={seq}: "
+                        "print_end already received"
+                    )
                     continue
 
                 logger.info(f"Received WS response id={request_id} seq={seq}")
@@ -509,9 +676,30 @@ class Tcp2WsBridge:
         except Exception as e:
             logger.error(f"Unexpected WebSocket error: {e}")
         finally:
-            if config.close_tcp_when_ws_down and not graceful_end_requested:
+            pending_start = False
+            if self.ws_client is websocket:
+                # Cancel a delayed F1 before shutting down TCP; otherwise it
+                # could start a job after the frontend has already gone away.
+                task = self.start_job_task
+                self.start_job_task = None
+                if task is not None and not task.done():
+                    pending_start = True
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+            if (
+                config.close_tcp_when_ws_down
+                and not graceful_end_requested
+                and not pending_start
+            ):
                 await self.close_all_tcp_clients_gracefully()
-            self.ws_client = None
+            if self.ws_client is websocket:
+                # Do not clear a newer WebSocket session that may have
+                # connected while this one was shutting down.
+                self.ws_client = None
+                self.stale_request_ids.update(self.active_requests.keys())
             logger.info("WS client connection cleaned up")
 
     async def run(self) -> None:
@@ -539,6 +727,7 @@ class Tcp2WsBridge:
         logger.info(f"  本机内网IP: {self.get_local_service_ip()}")
         logger.info(f"  WS断开时是否关闭TCP连接: {'是' if config.close_tcp_when_ws_down else '否'}")
         logger.info(f"  请求ID过期时间: {config.request_expire_seconds}秒")
+        logger.info(f"  print_end后F1最小等待: {config.f1_start_cooldown_seconds}秒")
         logger.info(f"  目标窗口: {config.win_title}")
         logger.info(f"  远程热键代理: {'启用' if config.remote_agent_enabled else '禁用'}")
         logger.info("=" * 60)
