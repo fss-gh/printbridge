@@ -30,7 +30,7 @@ class Tcp2WsConfig:
     tcp_port: int = 9090
     ws_port: int = 8181
     max_tcp_clients: int = 100
-    close_tcp_when_ws_down: bool = True
+    close_tcp_when_ws_down: bool = False
     close_tcp_on_print_end: bool = False
     f1_start_cooldown_seconds: int = 0
     request_expire_seconds: int = 30
